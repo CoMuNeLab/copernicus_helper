@@ -9,6 +9,7 @@ from zipfile import ZipFile
 
 import cdsapi
 import country_bounding_boxes as countries
+import requests
 import xarray as xr
 from rich.logging import RichHandler
 
@@ -29,7 +30,7 @@ log.info(f"Using URL {CDSAPI_URL}")
 
 
 def get_data_from_copernicus(
-    filename: str | Path,
+    filename: Path,
     year: int = 2011,
     variable: str = "instantaneous_10m_wind_gust",
     area: list[float] = [1, -1, -1, 1],  # This should be [north, west, south, east].
@@ -51,7 +52,7 @@ def get_data_from_copernicus(
     ```
     Go [here](https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=download) to find the other names
     """
-    if Path(filename).is_file():
+    if filename.is_file():
         # do not download the same data multiple times
         log.warning(f"This file has already been downloaded: {filename}")
         return
@@ -71,7 +72,41 @@ def get_data_from_copernicus(
     log_dict(request, "Request:")
 
     client = cdsapi.Client(url=CDSAPI_URL, key=CDSAPI_KEY)
-    client.retrieve(dataset, request).download(filename)
+    try:
+        client.retrieve(dataset, request).download(filename)
+    except requests.HTTPError as e:
+        if "cost limits" in str(e):
+            # be less bold
+            log.warning("Unpacking months.")
+            unpacked = list(unpack(request, "month", filename))
+
+            # TODO: one can unpack even further
+            for up in unpacked:
+                if not up["fn"].is_file():
+                    client.retrieve(dataset, up["request"]).download(up["fn"])
+            # This might take too much memory!!!
+            # repack(unpacked, "month", filename=filename)
+        else:
+            raise
+
+
+def unpack(request: dict, key: str, filename: Path):
+    """Yield similar requests, one for each value in request[key]"""
+    for val in request[key]:
+        r = request.copy()
+        r.update({key: [val]})
+        yield {
+            "fn": (filename.parent / (filename.with_suffix("").name + f"_{key}_{val}")).with_suffix(
+                filename.suffix
+            ),
+            "month": [val],
+            "request": r,
+        }
+
+
+def repack(unpacked: list[dict], key: str, filename: Path):
+    arr = xr.concat([xr.load_dataarray(up["fn"]) for up in unpacked], dim=key)
+    arr.to_netcdf(filename)
 
 
 def get_projections_from_copernicus(
