@@ -1,6 +1,7 @@
 """Use this to download Copernicus data."""
 
 import argparse
+import json
 import logging
 import os
 from pathlib import Path
@@ -88,6 +89,10 @@ def get_data_from_copernicus(
             # repack(unpacked, "month", filename=filename)
         else:
             raise
+    else:
+        # Dump the request to a json file
+        with open(filename.with_suffix(".json"), "wt") as fout:
+            json.dump(request, fout)
 
 
 def unpack(request: dict, key: str, filename: Path):
@@ -174,6 +179,10 @@ def get_projections_from_copernicus(
             raise FileNotFoundError("No nc files found in folder!")
 
     filename.with_suffix(".zip").unlink(missing_ok=True)
+
+    # Dump the request to a json file
+    with open(filename.with_suffix(".json"), "wt") as fout:
+        json.dump(request, fout)
 
 
 def log_dict(data: dict, title: str):
