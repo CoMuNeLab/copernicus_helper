@@ -1,6 +1,7 @@
 """Use this to download Copernicus data."""
 
 import argparse
+import ast
 import json
 import logging
 import os
@@ -123,17 +124,20 @@ def get_projections_from_copernicus(
     model: str = "access_cm2",
     years: tuple[int, int] = (2000, 2025),
     variable: str = "daily_maximum_near_surface_air_temperature",
-    area: list[float] = [90, -180, -90, 180],  # This should be [north, west, south, east].
+    area: list[float] | None = None,  # This should be [north, west, south, east].
 ):
     """Retrieve data from Copernicus and save locally as `.nc` file.
 
     ```
-    Go [here](https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=download) to find the other names
+    Go [here](https://cds.climate.copernicus.eu/datasets/projections-cmip6?tab=download) to find the other names
     """
     if Path(filename).is_file():
         log.warning(f"File {filename} is already downloaded")
         # do not download the same data multiple times
         return
+
+    if area is None:
+        area = [90, -180, -90, 180]
 
     dataset = "projections-cmip6"
     request = {
@@ -230,6 +234,13 @@ def get_country(
     log.info(f"Getting the country boundind boxes for {code2}")
     if code2 == "full":
         return [90, -180, -90, 180]
+
+    try:
+        bounds = list(ast.literal_eval(code2))
+    except SyntaxError:
+        pass
+    else:
+        return bounds
 
     units = countries.country_subunits_by_iso_code(code2)
     if subunit is None:
@@ -345,7 +356,10 @@ def main() -> None:
     log.info(f"Year:        {year1} - {year2}")
 
     monthly = "monthly" if arguments.monthly else "daily"
-    location = cache_location(arguments.folder) / f"{country}{SEP}{monthly}{SEP}{variable}"
+    location = (
+        cache_location(arguments.folder)
+        / f"{country}{SEP}{monthly}{SEP}{str(variable).replace(',', '+')}"
+    )
     location.mkdir(parents=True, exist_ok=True)
     log.info(f"Folder:      {location}")
 
@@ -364,7 +378,7 @@ def main() -> None:
                 experiment=arguments.experiment,
                 model=arguments.model,
                 years=(year1, year2),
-                variable=variable,
+                variable=str(variable).split(","),
                 area=get_country(country, subunit=subunit),
             )
     elif arguments.dataset is not None:

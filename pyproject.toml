@@ -5,13 +5,16 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "cdsapi>=0.7.7",
-  "country-bounding-boxes>=0.2.3",
-  "dask>=2025.11.0",
-  "netcdf4>=1.7.3",
-  "rich>=14.2.0",
-  "xarray>=2025.6.1",
+    "cdsapi>=0.7.7",
+    "country-bounding-boxes>=0.2.3",
+    "dask>=2025.11.0",
+    "netcdf4>=1.7.3",
+    "rich>=14.2.0",
+    "xarray>=2025.6.1",
 ]
 
 [project.scripts]
 copernicus_helper = "copernicus_helper.copernicus:main"
+
+[tool.uv]
+package = true
