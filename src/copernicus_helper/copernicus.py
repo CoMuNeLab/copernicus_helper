@@ -31,11 +31,11 @@ log.info(f"Using Key {CDSAPI_KEY}")
 log.info(f"Using URL {CDSAPI_URL}")
 
 
-def get_data_from_copernicus(
+def get_ERA5_data_from_copernicus(
     filename: Path,
     year: int = 2011,
     variable: str = "instantaneous_10m_wind_gust",
-    area: list[float] = [1, -1, -1, 1],  # This should be [north, west, south, east].
+    area: list[float] | None = None,  # This should be [north, west, south, east].
     dataset: str = "single-levels",
 ):
     """Retrieve data from Copernicus and save locally as `.nc` file.
@@ -59,6 +59,9 @@ def get_data_from_copernicus(
         log.warning(f"This file has already been downloaded: {filename}")
         return
 
+    if area is None:
+        area = [90, -180, -90, 180]
+
     dataset = "reanalysis-era5-" + dataset
     request = {
         "product_type": "reanalysis",
@@ -71,9 +74,11 @@ def get_data_from_copernicus(
         "download_format": "unarchived",
         "area": area,
     }
-    log_dict(request, "Request:")
 
+    log_dict(request, "Request:")
     client = cdsapi.Client(url=CDSAPI_URL, key=CDSAPI_KEY)
+
+    log.info("Downloading data")
     try:
         client.retrieve(dataset, request).download(filename)
     except requests.HTTPError as e:
@@ -82,12 +87,9 @@ def get_data_from_copernicus(
             log.warning("Unpacking months.")
             unpacked = list(unpack(request, "month", filename))
 
-            # TODO: one can unpack even further
             for up in unpacked:
                 if not up["fn"].is_file():
                     client.retrieve(dataset, up["request"]).download(up["fn"])
-            # This might take too much memory!!!
-            # repack(unpacked, "month", filename=filename)
         else:
             raise
     else:
@@ -115,7 +117,7 @@ def repack(unpacked: list[dict], key: str, filename: Path):
     arr.to_netcdf(filename)
 
 
-def get_projections_from_copernicus(
+def get_CMIP6_data_from_copernicus(
     filename: Path,
     resolution: Literal["daily", "monthly"] = "monthly",
     experiment: Literal[
@@ -123,7 +125,7 @@ def get_projections_from_copernicus(
     ] = "historical",
     model: str = "access_cm2",
     years: tuple[int, int] = (2000, 2025),
-    variable: str = "daily_maximum_near_surface_air_temperature",
+    variable: str | list[str] = "daily_maximum_near_surface_air_temperature",
     area: list[float] | None = None,  # This should be [north, west, south, east].
 ):
     """Retrieve data from Copernicus and save locally as `.nc` file.
@@ -131,7 +133,7 @@ def get_projections_from_copernicus(
     ```
     Go [here](https://cds.climate.copernicus.eu/datasets/projections-cmip6?tab=download) to find the other names
     """
-    if Path(filename).is_file():
+    if filename.is_file():
         log.warning(f"File {filename} is already downloaded")
         # do not download the same data multiple times
         return
@@ -170,11 +172,7 @@ def get_projections_from_copernicus(
             for item in ncfiles:
                 zipped.extract(member=item, path=filename.parent)
             ncfiles = [filename.parent / x for x in ncfiles]
-            ds = xr.open_mfdataset(
-                ncfiles,
-                combine="by_coords",  #
-                coords=["time"],
-            )
+            ds = xr.open_mfdataset(ncfiles, combine="by_coords", coords=["time"])
 
             ds.to_netcdf(filename)
             for item in ncfiles:
@@ -195,7 +193,7 @@ def log_dict(data: dict, title: str):
         log.info(f"    - {k}: {repr_value(v)}")
 
 
-def repr_value(val: str | float | int | list) -> str:
+def repr_value(val: str | float | list) -> str:
     if isinstance(val, list):
         if len(val) == 0:
             return "[]"
@@ -372,7 +370,7 @@ def main() -> None:
         if fname.is_file():
             log.warning(f"File {fname} is already downloaded")
         else:
-            get_projections_from_copernicus(
+            get_CMIP6_data_from_copernicus(
                 filename=fname,
                 resolution="monthly" if arguments.monthly else "daily",
                 experiment=arguments.experiment,
@@ -391,7 +389,7 @@ def main() -> None:
             if fname.is_file():
                 log.warning(f"File {fname} is already downloaded")
                 continue
-            get_data_from_copernicus(
+            get_ERA5_data_from_copernicus(
                 filename=fname,
                 year=year,
                 variable=variable,
