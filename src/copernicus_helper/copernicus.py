@@ -36,7 +36,7 @@ def get_ERA5_data_from_copernicus(
     year: int = 2011,
     variable: str = "instantaneous_10m_wind_gust",
     area: list[float] | None = None,  # This should be [north, west, south, east].
-    dataset: str = "single-levels",
+    dataset: Literal["single-levels", "land"] = "single-levels",
 ):
     """Retrieve data from Copernicus and save locally as `.nc` file.
 
@@ -62,7 +62,6 @@ def get_ERA5_data_from_copernicus(
     if area is None:
         area = [90, -180, -90, 180]
 
-    dataset = "reanalysis-era5-" + dataset
     request = {
         "product_type": "reanalysis",
         "variable": variable,
@@ -80,7 +79,7 @@ def get_ERA5_data_from_copernicus(
 
     log.info("Downloading data")
     try:
-        client.retrieve(dataset, request).download(filename)
+        client.retrieve("reanalysis-era5-" + dataset, request).download(filename)
     except requests.HTTPError as e:
         if "cost limits" in str(e):
             # be less bold
@@ -89,7 +88,7 @@ def get_ERA5_data_from_copernicus(
 
             for up in unpacked:
                 if not up["fn"].is_file():
-                    client.retrieve(dataset, up["request"]).download(up["fn"])
+                    client.retrieve("reanalysis-era5-" + dataset, up["request"]).download(up["fn"])
         else:
             raise
     else:
@@ -268,7 +267,6 @@ def cache_location(default: str | None = None) -> Path:
     else:
         location = Path(default).expanduser()
 
-    location.mkdir(parents=True, exist_ok=True)
     return location
 
 
@@ -354,9 +352,13 @@ def main() -> None:
     log.info(f"Year:        {year1} - {year2}")
 
     monthly = "monthly" if arguments.monthly else "daily"
-    location = (
-        cache_location(arguments.folder)
-        / f"{country}{SEP}{monthly}{SEP}{str(variable).replace(',', '+')}"
+    location = cache_location(arguments.folder) / SEP.join(
+        [
+            "CMIP6" if arguments.experiment is not None else "ERA5",
+            country,
+            monthly,
+            str(variable).replace(",", "+"),
+        ]
     )
     location.mkdir(parents=True, exist_ok=True)
     log.info(f"Folder:      {location}")
